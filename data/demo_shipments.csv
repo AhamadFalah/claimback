@@ -1,0 +1,13 @@
+Tracking No,Carrier,Order Number,Despatch Date,Last Update,Delivery Status,Post Code,Customer
+SW1000000001,swiftship,INV-1001,2026-06-20,2026-06-21,Delivered,N1 6DA,Alice Morgan
+SW1000000002,swiftship,INV-1002,2026-06-28,2026-06-30,In Transit,SW1A 1AA,Ben Okafor
+SW1000000003,swiftship,INV-1003,2026-06-15,,Label Created,M1 2AB,Chloe Davies
+SW1000000004,swiftship,INV-1004,2026-06-22,2026-06-23,Delivered,LS1 4DY,Dev Patel
+SW1000000005,swiftship,INV-1005,2026-06-12,2026-06-14,In Transit,G2 1DU,Emma Wilson
+SW1000000006,swiftship,INV-1006,2026-06-25,2026-06-26,Arrived Damaged,BS1 5TR,Farid Khan
+SW1000000007,swiftship,INV-1007,2026-06-10,,No Tracking Events,CF10 1EP,Grace Lee
+SW1000000008,swiftship,INV-1008,2026-06-24,2026-06-25,Delivered,EH1 1YZ,Hassan Ali
+SW1000000009,swiftship,INV-1009,2026-06-13,2026-06-15,In Transit,B1 1BB,Isla Brown
+SW1000000010,swiftship,INV-1010,2026-06-26,2026-06-27,Out for Delivery,NE1 4ST,Jack Turner
+SW1000000011,swiftship,INV-1011,2026-06-19,2026-06-20,Arrived Damaged,L1 8JQ,Kaya Nowak
+SW1000000012,swiftship,INV-1012,2026-06-08,,Label Created,OX1 2JD,Liam Murphy

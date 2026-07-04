@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.env
+.xero_tokens.json
+claimback.db
+out/
+.pytest_cache/
+.venv/
+
+# Vault layer — personal notes, runbook, and Claude/Obsidian config stay local
+CLAUDE.md
+notes/
+.claude/
+.obsidian/
+.mcp.json
+.DS_Store
