@@ -13,7 +13,8 @@ class Settings(BaseSettings):
     xero_redirect_uri: str = "http://localhost:8912/callback"
     xero_scopes: str = (
         "offline_access openid profile email "
-        "accounting.transactions accounting.contacts accounting.settings.read"
+        "accounting.transactions accounting.contacts accounting.settings.read "
+        "accounting.attachments"
     )
 
     # Behaviour
