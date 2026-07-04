@@ -11,10 +11,13 @@ class Settings(BaseSettings):
     xero_client_id: str = ""
     xero_client_secret: str = ""
     xero_redirect_uri: str = "http://localhost:8912/callback"
+    # Granular scopes — mandatory for apps created on/after 2 Mar 2026 (the old
+    # broad accounting.transactions is rejected with invalid_scope for them).
+    # invoices covers credit notes too; settings.read covers GET /Accounts.
     xero_scopes: str = (
         "offline_access openid profile email "
-        "accounting.transactions accounting.contacts accounting.settings.read "
-        "accounting.attachments"
+        "accounting.invoices accounting.payments accounting.banktransactions "
+        "accounting.contacts accounting.settings.read accounting.attachments"
     )
 
     # Behaviour
