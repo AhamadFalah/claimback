@@ -5,6 +5,7 @@ per tenant — the retry policy backs off on 429 using Retry-After.
 """
 from __future__ import annotations
 
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -47,7 +48,12 @@ class XeroClient:
     def _request(self, method: str, path: str, extra_headers: dict | None = None, **kwargs) -> dict:
         headers = {**self._headers(), **(extra_headers or {})}
         resp = self._client.request(method, f"{BASE}{path}", headers=headers, **kwargs)
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            # Xero puts the validation detail in the body — surface it or debug blind.
+            exc.args = (f"{exc.args[0]}\nXero response: {resp.text[:4000]}",)
+            raise
         return resp.json()
 
     # ---- Invoices ----
@@ -88,7 +94,9 @@ class XeroClient:
             "Type": "ACCREC",
             "Contact": {"ContactID": contact["ContactID"]},
             "Reference": f"CLAIM-{tracking_number}",
-            "LineAmountTypes": "Inclusive",  # claim value is the money we get — don't let VAT inflate it
+            "Date": date.today().isoformat(),
+            "DueDate": (date.today() + timedelta(days=30)).isoformat(),  # AUTHORISED requires a DueDate
+            "LineAmountTypes": "NoTax",  # courier compensation is outside the scope of VAT
             "LineItems": [{
                 "Description": f"Courier compensation claim — parcel {tracking_number}",
                 "Quantity": 1,
@@ -111,6 +119,7 @@ class XeroClient:
             "Type": "ACCRECCREDIT",
             "Contact": {"ContactID": contact["ContactID"]},
             "Reference": f"CLAIM-{tracking_number}",
+            "Date": date.today().isoformat(),
             "LineAmountTypes": "NoTax",  # compensation pass-through, outside the scope of VAT
             "LineItems": [{
                 "Description": f"Courier compensation recovered — parcel {tracking_number}",

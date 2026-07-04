@@ -39,6 +39,8 @@ def main() -> None:
             "Contact": {"ContactID": contact["ContactID"]},
             "Reference": ref,
             "InvoiceNumber": ref,
+            "Date": "2026-06-30",
+            "DueDate": "2026-07-30",
             "LineAmountTypes": "Exclusive",
             "LineItems": [{
                 "Description": "Fulfilment services — June 2026 (pick/pack, storage, despatch)",
