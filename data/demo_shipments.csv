@@ -1,13 +1,13 @@
-Tracking No,Carrier,Order Number,Despatch Date,Last Update,Delivery Status,Post Code,Customer
-SW1000000001,swiftship,INV-1001,2026-06-20,2026-06-21,Delivered,N1 6DA,Alice Morgan
-SW1000000002,swiftship,INV-1002,2026-06-28,2026-06-30,In Transit,SW1A 1AA,Ben Okafor
-SW1000000003,swiftship,INV-1003,2026-06-15,,Label Created,M1 2AB,Chloe Davies
-SW1000000004,swiftship,INV-1004,2026-06-22,2026-06-23,Delivered,LS1 4DY,Dev Patel
-SW1000000005,swiftship,INV-1005,2026-06-12,2026-06-14,In Transit,G2 1DU,Emma Wilson
-SW1000000006,swiftship,INV-1006,2026-06-25,2026-06-26,Arrived Damaged,BS1 5TR,Farid Khan
-SW1000000007,swiftship,INV-1007,2026-06-10,,No Tracking Events,CF10 1EP,Grace Lee
-SW1000000008,swiftship,INV-1008,2026-06-24,2026-06-25,Delivered,EH1 1YZ,Hassan Ali
-SW1000000009,swiftship,INV-1009,2026-06-13,2026-06-15,In Transit,B1 1BB,Isla Brown
-SW1000000010,swiftship,INV-1010,2026-06-26,2026-06-27,Out for Delivery,NE1 4ST,Jack Turner
-SW1000000011,swiftship,INV-1011,2026-06-19,2026-06-20,Arrived Damaged,L1 8JQ,Kaya Nowak
-SW1000000012,swiftship,INV-1012,2026-06-08,,Label Created,OX1 2JD,Liam Murphy
+Tracking No,Client,Channel,Courier Service,Order Number,Despatch Date,Last Update,Delivery Status,Declared Value,Post Code,Customer
+EV1000000001,OatSnax,Shopify,Evri,INV-1001,2026-06-20,2026-06-21,Delivered,21.50,N1 6DA,Alice Morgan
+EV1000000002,Brew & Bean,Shopify,Evri,INV-1002,2026-06-28,2026-06-30,In Transit,34.00,SW1A 1AA,Ben Okafor
+EV1000000003,OatSnax,Shopify,Evri,INV-1003,2026-06-15,,Label Created,18.40,M1 2AB,Chloe Davies
+EV1000000004,ChocoLoco,Amazon,Evri,INV-1004,2026-06-22,2026-06-23,Delivered,12.99,LS1 4DY,Dev Patel
+EV1000000005,Brew & Bean,Shopify,Evri,INV-1005,2026-06-12,2026-06-14,In Transit,42.00,G2 1DU,Emma Wilson
+EV1000000006,ChocoLoco,Amazon,Evri,INV-1006,2026-06-25,2026-06-26,Arrived Damaged,23.75,BS1 5TR,Farid Khan
+EV1000000007,Brew & Bean,Amazon,Evri,INV-1007,2026-06-10,,No Tracking Events,61.20,CF10 1EP,Grace Lee
+EV1000000008,ChocoLoco,Shopify,Evri,INV-1008,2026-06-12,2026-06-16,In Transit,55.00,EH1 1YZ,Hassan Ali
+EV1000000009,OatSnax,Shopify,Evri,INV-1009,2026-06-13,2026-06-15,In Transit,15.99,B1 1BB,Isla Brown
+EV1000000010,OatSnax,Shopify,Evri,INV-1010,2026-06-26,2026-06-27,Out for Delivery,19.99,NE1 4ST,Jack Turner
+EV1000000011,ChocoLoco,Shopify,Evri,INV-1011,2026-06-19,2026-06-20,Arrived Damaged,30.50,L1 8JQ,Kaya Nowak
+EV1000000012,OatSnax,Shopify,Evri,INV-1012,2026-06-08,,Label Created,24.20,OX1 2JD,Liam Murphy

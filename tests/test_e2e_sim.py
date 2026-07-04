@@ -1,25 +1,30 @@
-"""Simulated end-to-end run: ingest -> detect -> match -> pack -> file ->
-reconcile -> dashboard, against a FakeXero. No network, tmp_path DB.
+"""Simulated end-to-end 3PL run: ingest -> detect -> value -> pack -> file ->
+outcomes (the courier fight) -> reconcile -> credit notes -> dashboard,
+against a FakeXero. No network, tmp_path DB.
 
-The numbers are the demo story: 7 claimable shipments, £157.34 recoverable,
-4 payouts land (£91.35), one ambiguous payout is surfaced for a human.
+The demo story in numbers: 12 shipments, 8 flagged, 7 claims worth £148.59
+(1 unwinnable damage refused = £30.50 exposure), courier declines one
+(£15.99 write-off) and demands evidence on another (auto-resubmitted),
+4 payouts land (£82.60) and pass through to clients as credit notes.
 """
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from claimback.couriers import get_adapter
+from claimback.couriers import adapter_for
 from claimback.dashboard import compute
 from claimback.db import Register
 from claimback.detect import detect
 from claimback.ingest import ingest_csv
 from claimback.models import ClaimStatus
-from claimback.xero.matching import match_claims, reconcile_payouts
+from claimback.outcomes import ingest_outcomes
+from claimback.valuation import value_claims
+from claimback.xero.matching import reconcile_payouts
 
 ROOT = Path(__file__).parent.parent
 CSV = ROOT / "data" / "demo_shipments.csv"
+OUTCOMES_CSV = ROOT / "data" / "demo_outcomes.csv"
 TODAY = date(2026, 7, 2)  # the date the demo data was authored for
-CEILING = Decimal("25")
 
 
 def new_detections(register: Register) -> list:
@@ -30,60 +35,89 @@ def new_detections(register: Register) -> list:
 def test_end_to_end_simulation(tmp_path, fake_xero):
     register = Register(str(tmp_path / "e2e.db"))
 
-    # --- detect + match: 7 claims, values from Xero, capped at the ceiling ---
-    claims, unmatched = match_claims(fake_xero, new_detections(register))
+    # --- detect + value: 8 flagged, 7 claims, 1 refusal (unwinnable damage) ---
+    detections = new_detections(register)
+    assert len(detections) == 8
+    claims, refusals = value_claims(detections)
     assert len(claims) == 7
-    assert unmatched == []
-    assert all(c.status == ClaimStatus.MATCHED for c in claims)
-    assert sum(c.claim_value for c in claims) == Decimal("157.34")
+    assert sum(c.claim_value for c in claims) == Decimal("148.59")
 
-    capped = [c for c in claims if c.invoice_total > CEILING]
-    assert len(capped) == 3
-    assert all(c.claim_value == CEILING for c in capped)
-    uncapped = [c for c in claims if c.invoice_total <= CEILING]
-    assert all(c.claim_value == c.invoice_total for c in uncapped)
+    assert len(refusals) == 1
+    refused = refusals[0]
+    assert refused.tracking_number == "EV1000000011"   # damage on standard Evri
+    assert refused.status == ClaimStatus.REJECTED
+    assert refused.declared_value == Decimal("30.50")  # visible exposure, not a doomed claim
+    register.upsert(refused)
 
-    # --- pack: byte discipline, pence intact ---
-    adapter = get_adapter("swiftship")
-    ready = [c.transition(ClaimStatus.READY) for c in claims]
-    pack = adapter.generate_pack(ready)
-    assert not pack.startswith(b"\xef\xbb\xbf")  # no BOM
-    assert pack.endswith(b"\r\n")                # trailing CRLF
-    assert b'"' not in pack
-    assert b"18.40" in pack                      # claim value never truncated
-    for c in ready:
-        register.upsert(c)
+    # channel rules applied: amazon capped at £20, standard at £25
+    by_tracking = {c.tracking_number: c for c in claims}
+    assert by_tracking["EV1000000006"].claim_value == Decimal("20")   # amazon damage
+    assert by_tracking["EV1000000007"].claim_value == Decimal("20")   # amazon loss, £61.20 declared
+    assert by_tracking["EV1000000005"].claim_value == Decimal("25")   # standard, £42 declared
+    assert by_tracking["EV1000000003"].claim_value == Decimal("18.40")  # under ceiling: exact pence
 
-    # --- dedupe: a second run finds nothing new ---
+    # --- packs: one per (courier, channel) rule set, byte discipline held ---
+    by_adapter: dict[str, list] = {}
+    for c in claims:
+        by_adapter.setdefault(adapter_for(c.courier, c.channel).name, []).append(c)
+    assert {k: len(v) for k, v in by_adapter.items()} == {"evri": 5, "evri:amazon": 2}
+    for adapter_name, batch in by_adapter.items():
+        ready = [c.transition(ClaimStatus.READY) for c in batch]
+        pack = adapter_for(batch[0].courier, batch[0].channel).generate_pack(ready)
+        assert not pack.startswith(b"\xef\xbb\xbf")
+        assert pack.endswith(b"\r\n")
+        for c in ready:
+            register.upsert(c)
+
+    # --- dedupe: a second run finds nothing new (refusal included) ---
     assert new_detections(register) == []
 
     # --- file: READY -> FILED, receivable posted (to the fake) ---
     for c in register.by_status(ClaimStatus.READY):
-        fake_xero.create_claim_receivable(c.courier, c.tracking_number, c.claim_value)
-        register.upsert(c.transition(ClaimStatus.FILED))
-    filed = register.by_status(ClaimStatus.FILED)
-    assert len(filed) == 7
-    assert len(fake_xero.receivables) == 7
+        inv = fake_xero.create_claim_receivable(c.courier, c.tracking_number, c.claim_value)
+        register.upsert(c.transition(ClaimStatus.FILED).model_copy(
+            update={"xero_receivable_id": inv["InvoiceID"]}))
+    assert len(register.by_status(ClaimStatus.FILED)) == 7
 
-    # --- reconcile: 4 payouts matched, the ambiguous one surfaced, not applied ---
-    matches, ambiguous = reconcile_payouts(fake_xero, filed)
+    # --- the courier fight: one declined, one evidence loop ---
+    results = dict((t, s) for t, _, s in ingest_outcomes(OUTCOMES_CSV, register))
+    assert results["EV1000000009"] == "rejected"       # write-off, visible per client
+    assert results["EV1000000005"] == "filed"          # auto-resubmitted, round 1
+    assert register.get("EV1000000005").resubmissions == 1
+    assert len(register.by_status(ClaimStatus.FILED)) == 6
+
+    # --- reconcile: 4 payouts, ambiguous one surfaced, never applied ---
+    open_claims = register.by_status(ClaimStatus.FILED, ClaimStatus.PAID)
+    matches, ambiguous = reconcile_payouts(fake_xero, open_claims)
     assert len(matches) == 4
-    assert sum(amount for _, amount in matches) == Decimal("91.35")
+    assert sum(amount for _, amount in matches) == Decimal("82.60")
 
     assert len(ambiguous) == 1
     amb = ambiguous[0]
     assert "REF-UNKNOWN-77" in amb["reference"]
-    assert Decimal(amb["amount"]) == Decimal("25")
-    assert len(amb["candidates"]) == 2
-    matched_tracking = {c.tracking_number for c, _ in matches}
-    assert not set(amb["candidates"]) & matched_tracking  # never auto-applied
+    assert sorted(amb["candidates"]) == ["EV1000000005", "EV1000000008"]  # both £25, both open
 
+    # --- pass-through: each reconciled claim raises a client credit note ---
     for claim, amount in matches:
         paid = claim.transition(ClaimStatus.PAID).model_copy(update={"payout_value": amount})
-        register.upsert(paid.transition(ClaimStatus.RECONCILED))
+        note = fake_xero.create_claim_credit_note(claim.client, claim.tracking_number, amount)
+        register.upsert(paid.transition(ClaimStatus.RECONCILED).model_copy(
+            update={"xero_credit_note_id": note["CreditNoteID"]}))
 
-    # --- dashboard: the money view ---
+    credited: dict[str, Decimal] = {}
+    for client_name, _, amount in fake_xero.credit_notes:
+        credited[client_name] = credited.get(client_name, Decimal(0)) + amount
+    assert credited == {
+        "OatSnax": Decimal("42.60"),        # 18.40 + 24.20
+        "ChocoLoco": Decimal("20.00"),
+        "Brew & Bean": Decimal("20.00"),
+    }
+
+    # --- dashboard: the money view, split by client ---
     numbers = compute(register, today=TODAY)
-    assert numbers["recovered"] == Decimal("91.35")
-    assert numbers["pending"] == Decimal("65.99")
-    assert len(numbers["claims"]) == 7
+    assert numbers["recovered"] == Decimal("82.60")
+    assert numbers["pending"] == Decimal("50.00")       # the two £25 claims still in flight
+    assert numbers["written_off"] == Decimal("46.49")   # declined 15.99 + unclaimable 30.50
+    assert numbers["by_client"]["OatSnax"]["recovered"] == Decimal("42.60")
+    assert numbers["by_client"]["ChocoLoco"]["written_off"] == Decimal("30.50")
+    assert numbers["by_client"]["OatSnax"]["written_off"] == Decimal("15.99")

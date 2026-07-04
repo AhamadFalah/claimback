@@ -52,3 +52,12 @@ def get_adapter(name: str) -> CourierAdapter:
         return _REGISTRY[name.lower()]
     except KeyError:
         raise KeyError(f"No adapter for courier {name!r}. Registered: {sorted(_REGISTRY)}")
+
+
+def adapter_for(courier: str, channel: str = "standard") -> CourierAdapter:
+    """Resolve the rule set for (courier, channel) — channel-specific rules
+    (e.g. evri:amazon) win; otherwise fall back to the courier's standard rules."""
+    key = f"{courier}:{channel}".lower()
+    if key in _REGISTRY:
+        return _REGISTRY[key]
+    return get_adapter(courier)

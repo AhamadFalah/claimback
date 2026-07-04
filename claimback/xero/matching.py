@@ -1,48 +1,14 @@
-"""Shipment ↔ Xero invoice matching, and payout ↔ claim reconciliation.
+"""Payout ↔ claim reconciliation against the Xero bank feed.
 
-Conflict rule: the ACCOUNTING SYSTEM WINS. If the shipment file and the
-Xero invoice disagree (value, customer), the submission uses Xero data
-and the conflict is logged — never silently merged.
+Valuation moved to claimback.valuation — in the 3PL model Xero is the money
+ledger (receivables, payouts, client credit notes), not the price list.
 """
 from __future__ import annotations
 
 from decimal import Decimal
 
-from ..couriers import get_adapter
-from ..detect import claim_deadline
-from ..models import Claim, ClaimStatus, DetectionResult
+from ..models import Claim
 from .client import XeroClient
-
-
-def match_claims(client: XeroClient, detections: list[DetectionResult]) -> tuple[list[Claim], list[str]]:
-    """Turn detections into MATCHED claims with values from Xero."""
-    claims: list[Claim] = []
-    unmatched: list[str] = []
-    for d in detections:
-        s = d.shipment
-        invoice = client.find_invoice_by_reference(s.order_ref)
-        if invoice is None:
-            unmatched.append(f"{s.tracking_number}: no Xero invoice for ref {s.order_ref!r}")
-            continue
-        adapter = get_adapter(s.courier)
-        if d.claim_type not in adapter.eligible_types:
-            unmatched.append(f"{s.tracking_number}: {d.claim_type.value} not covered by {adapter.name}")
-            continue
-        # Xero JSON gives floats; quantise to pence at the money boundary.
-        total = Decimal(str(invoice.get("Total", 0))).quantize(Decimal("0.01"))
-        claim = Claim(
-            tracking_number=s.tracking_number,
-            courier=s.courier,
-            claim_type=d.claim_type,
-            order_ref=s.order_ref,
-            xero_invoice_id=invoice["InvoiceID"],
-            invoice_total=total,
-            claim_value=adapter.claim_value(total),
-            deadline=claim_deadline(s.shipped_at),
-            notes=f"rule={d.rule}",
-        ).transition(ClaimStatus.MATCHED)
-        claims.append(claim)
-    return claims, unmatched
 
 
 def reconcile_payouts(

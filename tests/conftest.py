@@ -3,31 +3,20 @@ from __future__ import annotations
 
 import pytest
 
-# Invoice totals for the demo order refs (what the seeded demo org would hold).
-INVOICES: dict[str, float] = {
-    "INV-1003": 18.40,
-    "INV-1005": 42.00,
-    "INV-1006": 23.75,
-    "INV-1007": 61.20,
-    "INV-1009": 15.99,
-    "INV-1011": 30.50,
-    "INV-1012": 24.20,
-}
-
-# Bank feed: payouts for 4 of the 7 claims, one deliberately ambiguous payout
+# Bank feed: payouts for 4 of the open claims, one deliberately ambiguous payout
 # (no tracking ref, ceiling-value amount matching several open claims), and a
 # SPEND that reconciliation must ignore.
 BANK_TRANSACTIONS: list[dict] = [
-    {"Type": "RECEIVE", "Reference": "SWIFTSHIP COMP CLAIM-SW1000000003",
-     "Total": 18.40, "Contact": {"Name": "SwiftShip (Claims)"}},
-    {"Type": "RECEIVE", "Reference": "SWIFTSHIP COMP CLAIM-SW1000000006",
-     "Total": 23.75, "Contact": {"Name": "SwiftShip (Claims)"}},
-    {"Type": "RECEIVE", "Reference": "SWIFTSHIP COMP CLAIM-SW1000000007",
-     "Total": 25.00, "Contact": {"Name": "SwiftShip (Claims)"}},
-    {"Type": "RECEIVE", "Reference": "SWIFTSHIP COMP CLAIM-SW1000000012",
-     "Total": 24.20, "Contact": {"Name": "SwiftShip (Claims)"}},
-    {"Type": "RECEIVE", "Reference": "SWIFTSHIP COMP REF-UNKNOWN-77",
-     "Total": 25.00, "Contact": {"Name": "SwiftShip (Claims)"}},
+    {"Type": "RECEIVE", "Reference": "EVRI COMP CLAIM-EV1000000003",
+     "Total": 18.40, "Contact": {"Name": "Evri (Claims)"}},
+    {"Type": "RECEIVE", "Reference": "EVRI COMP CLAIM-EV1000000006",
+     "Total": 20.00, "Contact": {"Name": "Evri (Claims)"}},
+    {"Type": "RECEIVE", "Reference": "EVRI COMP CLAIM-EV1000000007",
+     "Total": 20.00, "Contact": {"Name": "Evri (Claims)"}},
+    {"Type": "RECEIVE", "Reference": "EVRI COMP CLAIM-EV1000000012",
+     "Total": 24.20, "Contact": {"Name": "Evri (Claims)"}},
+    {"Type": "RECEIVE", "Reference": "EVRI COMP REF-UNKNOWN-77",
+     "Total": 25.00, "Contact": {"Name": "Evri (Claims)"}},
     {"Type": "SPEND", "Reference": "OFFICE SUPPLIES",
      "Total": 12.00, "Contact": {"Name": "Staples"}},
 ]
@@ -43,15 +32,11 @@ class FakeXero:
     receivables: list[tuple[str, object]] = []
     payments: list[tuple[str, object]] = []
     attachments: list[tuple[str, str, int]] = []
+    credit_notes: list[tuple[str, str, object]] = []
 
     @classmethod
     def reset(cls):
-        cls.receivables, cls.payments, cls.attachments = [], [], []
-
-    def find_invoice_by_reference(self, reference: str):
-        if reference in INVOICES:
-            return {"InvoiceID": f"xero-{reference}", "Total": INVOICES[reference]}
-        return None
+        cls.receivables, cls.payments, cls.attachments, cls.credit_notes = [], [], [], []
 
     def list_bank_transactions(self, page: int = 1) -> list[dict]:
         return [dict(tx) for tx in BANK_TRANSACTIONS]
@@ -63,6 +48,10 @@ class FakeXero:
     def apply_payment(self, invoice_id: str, amount, account_code=None):
         FakeXero.payments.append((invoice_id, amount))
         return {"PaymentID": f"pay-{len(FakeXero.payments)}"}
+
+    def create_claim_credit_note(self, client_name: str, tracking_number: str, amount):
+        FakeXero.credit_notes.append((client_name, tracking_number, amount))
+        return {"CreditNoteID": f"cn-{tracking_number}"}
 
     def attach_file_to_invoice(self, invoice_id: str, filename: str, content: bytes):
         FakeXero.attachments.append((invoice_id, filename, len(content)))

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 from datetime import date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -20,6 +21,7 @@ COLUMN_ALIASES: dict[str, str] = {
     "tracking no": "tracking_number", "barcode": "tracking_number",
     "consignment": "tracking_number", "parcel id": "tracking_number",
     "courier": "courier", "carrier": "courier", "shipping method": "courier",
+    "courier service": "courier",
     "order_ref": "order_ref", "order no": "order_ref", "order number": "order_ref",
     "order id": "order_ref", "reference": "order_ref", "invoice ref": "order_ref",
     "shipped_at": "shipped_at", "ship date": "shipped_at", "despatch date": "shipped_at",
@@ -28,6 +30,15 @@ COLUMN_ALIASES: dict[str, str] = {
     "status": "status", "delivery status": "status", "tracking status": "status",
     "postcode": "postcode", "zip": "postcode", "post code": "postcode",
     "recipient": "recipient", "customer": "recipient", "name": "recipient",
+    # 3PL columns (Mintsoft-style exports)
+    "client": "client", "brand": "client", "client name": "client", "account": "client",
+    "channel": "channel", "sales channel": "channel", "platform": "channel",
+    "source": "channel", "marketplace": "channel",
+    "declared value": "declared_value", "order value": "declared_value",
+    "goods value": "declared_value", "value": "declared_value", "parcel value": "declared_value",
+    # Mintsoft header spellings (no spaces/underscores after normalisation)
+    "trackingnumber": "tracking_number", "consignmentnumber": "tracking_number",
+    "ordernumber": "order_ref", "courierservice": "courier", "despatchdate": "shipped_at",
 }
 
 STATUS_ALIASES: dict[str, ShipmentStatus] = {
@@ -100,6 +111,12 @@ def ingest_csv(path: str | Path) -> list[Shipment]:
                     data[field] = parse_date(raw)
                 elif field == "status":
                     data[field] = STATUS_ALIASES.get(raw.lower(), ShipmentStatus.IN_TRANSIT)
+                elif field == "declared_value":
+                    data[field] = Decimal(raw.replace("£", "").replace(",", "")) if raw else None
+                elif field == "channel":
+                    data[field] = "amazon" if "amazon" in raw.lower() else "standard"
+                elif field == "courier":
+                    data[field] = raw.lower()  # adapter keys are lower-case
                 else:
                     data[field] = raw
             shipments.append(Shipment(**data))

@@ -1,9 +1,14 @@
-"""SwiftShip — a synthetic demo courier.
+"""Evri adapters — the 3PL's workhorse courier, with channel-specific rules.
 
-Deliberately awkward format (fixed header, CRLF line endings, no quoting,
-UTF-8 without BOM) to demonstrate the byte-exact generation + golden-file
-snapshot testing pattern. During the hackathon, add real courier adapters
-alongside this one using publicly documented claim processes.
+Compensation rules differ by SALES CHANNEL, not just courier:
+  * standard Evri:      ceiling £25, LOSS claims only — damage is not claimable,
+                        so damaged standard-channel parcels are surfaced as
+                        write-off exposure instead of doomed claims.
+  * Evri via Amazon:    ceiling £20, LOSS and DAMAGE claimable.
+
+Pack format is deliberately strict (fixed header, CRLF, no quoting, UTF-8
+no BOM) and snapshot-tested byte-for-byte — courier portals reject bulk
+claim files over invisible differences.
 """
 from __future__ import annotations
 
@@ -23,11 +28,8 @@ def _sanitise(value: str) -> str:
     return out.strip()
 
 
-class SwiftShipAdapter(CourierAdapter):
-    name = "swiftship"
-    ceiling = Decimal("25")
-    claim_window_days = 28
-    eligible_types = {ClaimType.LOSS, ClaimType.DAMAGE}
+class _EvriPackFormat(CourierAdapter):
+    """Shared bulk-claim CSV format; ceiling/eligibility set per subclass."""
 
     COMMENTS = {
         ClaimType.LOSS: "Parcel lost in network - no tracking movement",
@@ -62,7 +64,7 @@ class SwiftShipAdapter(CourierAdapter):
 
     def validate_pack(self, pack: bytes) -> None:
         if pack.startswith(b"\xef\xbb\xbf"):
-            raise ClaimPackError("BOM detected — SwiftShip parser reads it as part of column 1")
+            raise ClaimPackError("BOM detected — Evri portal reads it as part of column 1")
         if not pack.endswith(b"\r\n"):
             raise ClaimPackError("Missing trailing CRLF")
         text = pack.decode("utf-8")
@@ -78,4 +80,19 @@ class SwiftShipAdapter(CourierAdapter):
                 raise ClaimPackError(f"Line {n}: quoting is forbidden — sanitise at source")
 
 
-register(SwiftShipAdapter())
+class EvriAdapter(_EvriPackFormat):
+    name = "evri"
+    ceiling = Decimal("25")
+    claim_window_days = 28
+    eligible_types = {ClaimType.LOSS}          # damage is NOT claimable on standard Evri
+
+
+class EvriAmazonAdapter(_EvriPackFormat):
+    name = "evri:amazon"
+    ceiling = Decimal("20")
+    claim_window_days = 28
+    eligible_types = {ClaimType.LOSS, ClaimType.DAMAGE}
+
+
+register(EvriAdapter())
+register(EvriAmazonAdapter())

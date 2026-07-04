@@ -99,6 +99,30 @@ class XeroClient:
         }
         return self.create_invoice(invoice)
 
+    def create_claim_credit_note(self, client_name: str, tracking_number: str, amount: Decimal) -> dict:
+        """Pass the recovered payout through to the 3PL client as an ACCREC credit note.
+
+        Referenced CLAIM-<tracking>; the client allocates it against their next
+        fulfilment invoice. Raised only after the courier payout has reconciled —
+        money is distributed when it exists, never before.
+        """
+        contact = self.get_or_create_contact(client_name)
+        credit_note = {
+            "Type": "ACCRECCREDIT",
+            "Contact": {"ContactID": contact["ContactID"]},
+            "Reference": f"CLAIM-{tracking_number}",
+            "LineAmountTypes": "NoTax",  # compensation pass-through, outside the scope of VAT
+            "LineItems": [{
+                "Description": f"Courier compensation recovered — parcel {tracking_number}",
+                "Quantity": 1,
+                "UnitAmount": float(amount),
+                "AccountCode": settings.xero_recoveries_account,
+            }],
+            "Status": "AUTHORISED",
+        }
+        data = self._request("PUT", "/CreditNotes", json={"CreditNotes": [credit_note]})
+        return data["CreditNotes"][0]
+
     def attach_file_to_invoice(self, invoice_id: str, filename: str, content: bytes) -> dict:
         """Attach evidence (e.g. the submitted claim pack) to the claim receivable."""
         return self._request(

@@ -1,0 +1,4 @@
+CLAIM REF,TRACKING NO,ORDER REF,POSTCODE,CLAIM TYPE,PARCEL VALUE,COMMENTS
+CB0001,EV1000000003,INV-1003,,LOSS,18.40,Parcel lost in network - no tracking movement
+CB0002,EV1000000005,INV-1005,,LOSS,25,Parcel lost in network - no tracking movement
+CB0003,EV1000000009,INV-1009,,LOSS,15.99,Parcel lost in network - no tracking movement

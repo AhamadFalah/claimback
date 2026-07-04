@@ -1,16 +1,15 @@
-"""Seed the Xero Demo Company with invoices matching data/demo_shipments.csv.
+"""Seed the Xero Demo Company with the 3PL's client accounts.
 
 Run once after `claimback auth` (connect to the DEMO COMPANY, not a real org):
 
     python scripts/seed_xero.py
 
-Creates one ACCREC invoice per demo order ref so shipment↔invoice matching
-works end-to-end in the demo.
+Creates each client brand as a Contact with one AUTHORISED monthly fulfilment
+invoice — so when ClaimBack raises claim credit notes, there's a real client
+account (and an invoice to allocate the credit against) in the org.
 """
 from __future__ import annotations
 
-import csv
-import random
 import sys
 from pathlib import Path
 
@@ -18,35 +17,39 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from claimback.xero.client import XeroClient  # noqa: E402
 
-random.seed(42)
+# Fictional demo brands (see data/demo_shipments.csv) and their June fulfilment bills.
+CLIENTS = {
+    "OatSnax": 480.00,
+    "ChocoLoco": 1240.50,
+    "Brew & Bean": 655.25,
+}
+
 
 def main() -> None:
     client = XeroClient()
-    rows = list(csv.DictReader(open(Path(__file__).parent.parent / "data" / "demo_shipments.csv")))
-    for row in rows:
-        ref = row["Order Number"]
+    for name, monthly_total in CLIENTS.items():
+        contact = client.get_or_create_contact(name)
+        ref = f"FUL-2026-06-{name.replace(' ', '').replace('&', 'and')}"
         existing = client.find_invoice_by_reference(ref)
         if existing:
-            print(f"{ref}: already exists, skipping")
+            print(f"{name}: fulfilment invoice already exists, skipping")
             continue
-        contact = client.get_or_create_contact(row["Customer"])
-        value = round(random.uniform(12, 85), 2)  # mix of below/above the £25 ceiling
         invoice = {
             "Type": "ACCREC",
             "Contact": {"ContactID": contact["ContactID"]},
             "Reference": ref,
             "InvoiceNumber": ref,
-            "LineAmountTypes": "Inclusive",  # UK demo org applies 20% VAT — keep totals = the seeded value
+            "LineAmountTypes": "Exclusive",
             "LineItems": [{
-                "Description": "Online order",
+                "Description": "Fulfilment services — June 2026 (pick/pack, storage, despatch)",
                 "Quantity": 1,
-                "UnitAmount": value,
+                "UnitAmount": monthly_total,
                 "AccountCode": "200",
             }],
             "Status": "AUTHORISED",
         }
         created = client.create_invoice(invoice)
-        print(f"{ref}: created invoice {created['InvoiceID']} £{value}")
+        print(f"{name}: contact + fulfilment invoice {created['InvoiceID']} £{monthly_total}")
 
 
 if __name__ == "__main__":

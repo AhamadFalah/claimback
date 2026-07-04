@@ -60,12 +60,15 @@ def assert_transition(current: ClaimStatus, new: ClaimStatus) -> None:
 class Shipment(BaseModel):
     tracking_number: str
     courier: str
-    order_ref: str                       # links to the Xero invoice reference
+    order_ref: str                       # the client's order reference
     shipped_at: date
     last_scan_at: Optional[date] = None
     status: ShipmentStatus = ShipmentStatus.IN_TRANSIT
     postcode: str = ""
     recipient: str = ""
+    client: str = ""                     # 3PL client brand the parcel was shipped for
+    channel: str = "standard"            # sales channel — courier rules differ per channel
+    declared_value: Optional[Decimal] = None  # goods value declared by the client (WMS export)
 
 
 class ClaimType(str, enum.Enum):
@@ -79,14 +82,17 @@ class Claim(BaseModel):
     claim_type: ClaimType
     status: ClaimStatus = ClaimStatus.DETECTED
     order_ref: str = ""
-    xero_invoice_id: Optional[str] = None
-    invoice_total: Optional[Decimal] = None
-    claim_value: Optional[Decimal] = None    # min(invoice_total, courier ceiling) — enforced, never clamped silently
+    client: str = ""                         # which 3PL client this recovery belongs to
+    channel: str = "standard"                # decides which courier rule set applied
+    declared_value: Optional[Decimal] = None
+    claim_value: Optional[Decimal] = None    # min(declared value, channel ceiling) — enforced, never clamped silently
     deadline: Optional[date] = None          # couriers time-bar claims; expiring money is lost money
     filed_at: Optional[datetime] = None
+    resubmissions: int = 0                   # evidence-requested fight rounds used
     payout_value: Optional[Decimal] = None
     xero_receivable_id: Optional[str] = None  # the CLAIM-<tracking> ACCREC posted on filing
     xero_payment_id: Optional[str] = None
+    xero_credit_note_id: Optional[str] = None  # client credit note raised on reconciliation
     notes: str = ""
 
     def transition(self, new: ClaimStatus) -> "Claim":

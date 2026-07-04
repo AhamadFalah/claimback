@@ -33,25 +33,34 @@ class Tool:
 def build_tools(register, xero_client) -> list[Tool]:
     from ..detect import detect
     from ..ingest import ingest_csv
-    from ..xero.matching import match_claims, reconcile_payouts
-    from ..couriers import get_adapter
+    from ..outcomes import ingest_outcomes
+    from ..valuation import value_claims
+    from ..xero.matching import reconcile_payouts
+    from ..couriers import adapter_for
 
     return [
-        Tool("ingest_shipments", "Load a shipment CSV (messy columns handled)", ingest_csv),
+        Tool("ingest_shipments", "Load a WMS shipment CSV (messy columns handled)", ingest_csv),
         Tool("detect_claimables", "Run detection rules over shipments", detect),
-        Tool("match_to_invoices", "Match detections to Xero invoices and set claim values",
-             lambda detections: match_claims(xero_client, detections)),
+        Tool("value_claims",
+             "Value detections against channel-specific courier rules; returns "
+             "(claims, refusals) — refusals are unwinnable, never file them",
+             value_claims),
         Tool("generate_claim_pack", "Generate the courier's byte-exact submission file",
-             lambda courier, claims: get_adapter(courier).generate_pack(claims)),
+             lambda courier, channel, claims: adapter_for(courier, channel).generate_pack(claims)),
+        Tool("ingest_courier_outcomes",
+             "Apply a courier response file (paid/declined/info_requested) to the register",
+             lambda path: ingest_outcomes(path, register)),
         Tool("reconcile_payouts",
-             "Match bank payouts to filed claims; returns (matches, ambiguous) — "
+             "Match bank payouts to open claims; returns (matches, ambiguous) — "
              "ambiguous payouts must go to the operator, never be applied",
-             lambda filed: reconcile_payouts(xero_client, filed)),
+             lambda open_claims: reconcile_payouts(xero_client, open_claims)),
     ]
 
 
 SYSTEM_PROMPT = """\
-You are ClaimBack, an autonomous claims-recovery agent for a small business.
+You are ClaimBack, an autonomous claims-recovery agent for a UK 3PL.
+You raise courier compensation claims on behalf of the 3PL's client brands,
+fight rejections, and pass recovered money to the right client.
 Your job: make sure no recoverable courier compensation is ever left behind.
 You may use the provided tools. You must never invent claim values, never
 resubmit an already-filed tracking number, and always surface ambiguous
