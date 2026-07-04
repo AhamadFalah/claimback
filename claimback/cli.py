@@ -154,15 +154,24 @@ def reconcile():
         paid = claim if claim.status == ClaimStatus.PAID else claim.transition(ClaimStatus.PAID)
         paid = paid.model_copy(update={"payout_value": amount})
         if not settings.dry_run and claim.xero_receivable_id:
-            # Apply the payout against the claim receivable — Xero shows it as a
-            # suggested match on the bank line; the human clicks OK (honest boundary).
+            # Payout received = claim accepted: recognise the DRAFT receivable
+            # (FRS 102 s21 — now virtually certain), then apply the payment. Xero
+            # shows it as a suggested match on the bank line; the human clicks OK.
+            client.authorise_invoice(claim.xero_receivable_id)
             payment = client.apply_payment(claim.xero_receivable_id, amount)
             paid = paid.model_copy(update={"xero_payment_id": payment.get("PaymentID")})
         done = paid.transition(ClaimStatus.RECONCILED)
         if not settings.dry_run and claim.client:
-            # Pass-through: the client gets the recovered amount as a credit note.
+            # Pass-through: the client gets the recovered amount as a credit note,
+            # allocated straight onto their outstanding fulfilment invoice.
             note = client.create_claim_credit_note(claim.client, claim.tracking_number, amount)
             done = done.model_copy(update={"xero_credit_note_id": note.get("CreditNoteID")})
+            try:
+                target = client.find_open_invoice_for_contact(note["Contact"]["ContactID"])
+                if target:
+                    client.allocate_credit_note(note["CreditNoteID"], target["InvoiceID"], amount)
+            except Exception as exc:  # allocation is a convenience, never blocks the recovery
+                console.print(f"[yellow]warning:[/yellow] credit note not allocated: {exc}")
         register.upsert(done)
         console.print(f"[green]£{amount}[/green] reconciled against {claim.tracking_number} "
                       f"-> credit note to {claim.client or 'n/a'}")

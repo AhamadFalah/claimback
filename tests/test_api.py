@@ -111,6 +111,10 @@ def test_file_fight_reconcile_live_flow(client, monkeypatch, fake_xero_class):
     assert len(fake_xero_class.payments) == 4      # applied against receivables
     posted = {f"rcv-{tracking}" for tracking, _ in fake_xero_class.receivables}
     assert all(invoice_id in posted for invoice_id, _ in fake_xero_class.payments)
+    # FRS 102: receivables are DRAFT at filing, authorised only at payout (acceptance)
+    assert len(fake_xero_class.authorised) == 4
+    # each credit note is allocated against the client's open fulfilment invoice
+    assert len(fake_xero_class.allocations) == 4
 
     # pass-through: credit notes to the right clients
     credited = {}

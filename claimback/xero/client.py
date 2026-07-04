@@ -95,17 +95,47 @@ class XeroClient:
             "Contact": {"ContactID": contact["ContactID"]},
             "Reference": f"CLAIM-{tracking_number}",
             "Date": date.today().isoformat(),
-            "DueDate": (date.today() + timedelta(days=30)).isoformat(),  # AUTHORISED requires a DueDate
-            "LineAmountTypes": "NoTax",  # courier compensation is outside the scope of VAT
+            "DueDate": (date.today() + timedelta(days=30)).isoformat(),
+            "LineAmountTypes": "NoTax",  # courier compensation is outside the scope of VAT (HMRC VATSC06190)
             "LineItems": [{
                 "Description": f"Courier compensation claim — parcel {tracking_number}",
                 "Quantity": 1,
                 "UnitAmount": float(value),
                 "AccountCode": settings.xero_recoveries_account,
             }],
-            "Status": "AUTHORISED",
+            # FRS 102 s21: a filed-but-unaccepted claim is a contingent asset, so it
+            # must not hit the ledgers yet. DRAFT tracks it in Xero without recognising
+            # income; it is authorised when the courier accepts / the payout lands.
+            "Status": "DRAFT",
         }
         return self.create_invoice(invoice)
+
+    def authorise_invoice(self, invoice_id: str) -> dict:
+        """Recognise the receivable — called once the claim is accepted (virtually
+        certain per FRS 102 s21), in the demo when the payout is reconciled."""
+        data = self._request("POST", "/Invoices", json={"Invoices": [{
+            "InvoiceID": invoice_id, "Status": "AUTHORISED",
+        }]})
+        return data["Invoices"][0]
+
+    def find_open_invoice_for_contact(self, contact_id: str) -> Optional[dict]:
+        """The client's outstanding fulfilment invoice — allocation target for claim credit notes."""
+        where = f'Contact.ContactID==Guid("{contact_id}") AND Status=="AUTHORISED" AND Type=="ACCREC"'
+        data = self._request("GET", "/Invoices", params={"where": where})
+        invoices = [i for i in data.get("Invoices", []) if i.get("AmountDue", 0) > 0]
+        return invoices[0] if invoices else None
+
+    def allocate_credit_note(self, credit_note_id: str, invoice_id: str, amount: Decimal) -> dict:
+        """Allocate the claim credit note against the client's fulfilment invoice —
+        the recovered money visibly reduces what the client owes."""
+        data = self._request("PUT", f"/CreditNotes/{credit_note_id}/Allocations", json={
+            "Allocations": [{
+                "Invoice": {"InvoiceID": invoice_id},
+                "Amount": float(amount),
+                "Date": date.today().isoformat(),
+            }],
+        })
+        return data
 
     def create_claim_credit_note(self, client_name: str, tracking_number: str, amount: Decimal) -> dict:
         """Pass the recovered payout through to the 3PL client as an ACCREC credit note.
@@ -122,7 +152,10 @@ class XeroClient:
             "Date": date.today().isoformat(),
             "LineAmountTypes": "NoTax",  # compensation pass-through, outside the scope of VAT
             "LineItems": [{
-                "Description": f"Courier compensation recovered — parcel {tracking_number}",
+                # Explicit narration matters: this is compensation, not a price
+                # reduction — outside the scope of VAT per HMRC VATSC06190.
+                "Description": (f"Compensation for goods lost/damaged in transit — parcel "
+                                f"{tracking_number} — outside the scope of VAT"),
                 "Quantity": 1,
                 "UnitAmount": float(amount),
                 "AccountCode": settings.xero_recoveries_account,

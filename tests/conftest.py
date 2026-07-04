@@ -33,25 +33,41 @@ class FakeXero:
     payments: list[tuple[str, object]] = []
     attachments: list[tuple[str, str, int]] = []
     credit_notes: list[tuple[str, str, object]] = []
+    authorised: list[str] = []
+    allocations: list[tuple[str, str, object]] = []
 
     @classmethod
     def reset(cls):
-        cls.receivables, cls.payments, cls.attachments, cls.credit_notes = [], [], [], []
+        cls.receivables, cls.payments, cls.attachments = [], [], []
+        cls.credit_notes, cls.authorised, cls.allocations = [], [], []
 
     def list_bank_transactions(self, page: int = 1) -> list[dict]:
         return [dict(tx) for tx in BANK_TRANSACTIONS]
 
     def create_claim_receivable(self, courier_name: str, tracking_number: str, value):
         FakeXero.receivables.append((tracking_number, value))
-        return {"InvoiceID": f"rcv-{tracking_number}"}
+        return {"InvoiceID": f"rcv-{tracking_number}", "Status": "DRAFT"}
+
+    def authorise_invoice(self, invoice_id: str):
+        FakeXero.authorised.append(invoice_id)
+        return {"InvoiceID": invoice_id, "Status": "AUTHORISED"}
 
     def apply_payment(self, invoice_id: str, amount, account_code=None):
+        assert invoice_id in FakeXero.authorised, "payment applied to unauthorised (DRAFT) receivable"
         FakeXero.payments.append((invoice_id, amount))
         return {"PaymentID": f"pay-{len(FakeXero.payments)}"}
 
     def create_claim_credit_note(self, client_name: str, tracking_number: str, amount):
         FakeXero.credit_notes.append((client_name, tracking_number, amount))
-        return {"CreditNoteID": f"cn-{tracking_number}"}
+        return {"CreditNoteID": f"cn-{tracking_number}",
+                "Contact": {"ContactID": f"contact-{client_name}"}}
+
+    def find_open_invoice_for_contact(self, contact_id: str):
+        return {"InvoiceID": f"ful-{contact_id}", "AmountDue": 9999.0}
+
+    def allocate_credit_note(self, credit_note_id: str, invoice_id: str, amount):
+        FakeXero.allocations.append((credit_note_id, invoice_id, amount))
+        return {}
 
     def attach_file_to_invoice(self, invoice_id: str, filename: str, content: bytes):
         FakeXero.attachments.append((invoice_id, filename, len(content)))
