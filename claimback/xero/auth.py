@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import base64
 import json
-import threading
 import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -45,14 +44,31 @@ class TokenCache:
 
 class _CallbackHandler(BaseHTTPRequestHandler):
     code: str | None = None
+    error: str | None = None
 
     def do_GET(self):  # noqa: N802
-        qs = parse_qs(urlparse(self.path).query)
-        _CallbackHandler.code = (qs.get("code") or [None])[0]
+        parsed = urlparse(self.path)
+        qs = parse_qs(parsed.query)
+        code = (qs.get("code") or [None])[0]
+        error = (qs.get("error") or [None])[0]
+        if parsed.path != "/callback" or (code is None and error is None):
+            # favicon requests, browser prefetches etc. — ignore, keep waiting
+            self.send_response(204)
+            self.end_headers()
+            return
+        if (qs.get("state") or [None])[0] != "claimback":
+            self.send_response(400)
+            self.end_headers()
+            self.wfile.write(b"<h2>State mismatch - possible CSRF. Re-run claimback auth.</h2>")
+            return
+        _CallbackHandler.code, _CallbackHandler.error = code, error
         self.send_response(200)
         self.send_header("Content-Type", "text/html")
         self.end_headers()
-        self.wfile.write(b"<h2>ClaimBack connected to Xero. You can close this tab.</h2>")
+        if error:
+            self.wfile.write(f"<h2>Xero returned an error: {error}. Check the terminal.</h2>".encode())
+        else:
+            self.wfile.write(b"<h2>ClaimBack connected to Xero. You can close this tab.</h2>")
 
     def log_message(self, *args):  # silence
         pass
@@ -74,13 +90,19 @@ def authorize() -> dict:
     }
     url = f"{AUTH_URL}?{urlencode(params)}"
     port = urlparse(settings.xero_redirect_uri).port or 8912
+    _CallbackHandler.code = _CallbackHandler.error = None
     server = HTTPServer(("localhost", port), _CallbackHandler)
-    thread = threading.Thread(target=server.handle_request, daemon=True)
-    thread.start()
+    server.timeout = 1  # so the loop below can check the deadline between requests
     print(f"Opening browser for Xero consent…\n{url}")
     webbrowser.open(url)
-    thread.join(timeout=300)
+    # Serve until a real callback arrives — stray requests (favicon, prefetch)
+    # must not consume the flow, which is why handle_request() runs in a loop.
+    deadline = time.time() + 300
+    while _CallbackHandler.code is None and _CallbackHandler.error is None and time.time() < deadline:
+        server.handle_request()
     server.server_close()
+    if _CallbackHandler.error:
+        raise RuntimeError(f"Xero consent failed: {_CallbackHandler.error}")
     if not _CallbackHandler.code:
         raise RuntimeError("No authorization code received (timed out after 5 min)")
 
